@@ -7,6 +7,8 @@
 #include "RTSResourceInteractionInterface.h"
 #include "RTSBaseUnit_Ground.generated.h"
 
+class UBP_ResourceManagerComponent;
+
 UCLASS(Blueprintable)
 class THEADAMUPROJECT_API ARTSBaseUnit_Ground : public ARTSBaseUnit, public IRTSResourceInteractionInterface
 {
@@ -33,7 +35,7 @@ protected:
 	virtual void BeginPlay() override;
 
 	// Controller for pathfinding
-	class AAIController* AIController;
+	class ARTS_AIController* AIController;
 
 	// Flag to track if we're waiting for a pathfinding result
 	bool bIsPathfinding;

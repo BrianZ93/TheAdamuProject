@@ -34,8 +34,10 @@ void AAdamuProjectPlayerCameraManager::UpdateCamera(float DeltaTime)
             CameraRotation.Yaw = OriginalYaw;
         }
 
-        UE_LOG(LogTemp, Log, TEXT("CameraManager SnapBack - New Yaw: %f, Target: %f"), CameraRotation.Yaw, OriginalYaw);
     }
+
+    // Ensure pitch remains at -90 for top-down view
+    CameraRotation.Pitch = -90.0f;
 
     // Update edge scrolling
     UpdateEdgeScrolling(DeltaTime);
@@ -55,25 +57,21 @@ void AAdamuProjectPlayerCameraManager::MoveCamera(FVector2D MovementVector, floa
 {
     FVector MovementDelta(MovementVector.X * CameraSpeed * DeltaTime, MovementVector.Y * CameraSpeed * DeltaTime, 0.0f);
     CameraLocation += MovementDelta;
-    UE_LOG(LogTemp, Log, TEXT("CameraManager Move - Delta: %s, New Location: %s"), *MovementDelta.ToString(), *CameraLocation.ToString());
 }
 
 void AAdamuProjectPlayerCameraManager::ZoomCamera(float ZoomValue)
 {
     CameraDistance = FMath::Clamp(CameraDistance - ZoomValue * ZoomSpeed, MinZoom, MaxZoom);
-    UE_LOG(LogTemp, Log, TEXT("CameraManager Zoom - Value: %f, New Distance: %f"), ZoomValue, CameraDistance);
 }
 
 void AAdamuProjectPlayerCameraManager::RotateCameraLeft(float DeltaTime)
 {
     CameraRotation.Yaw -= RotationSpeed * DeltaTime;
-    UE_LOG(LogTemp, Log, TEXT("CameraManager RotateLeft - New Rotation: %s"), *CameraRotation.ToString());
 }
 
 void AAdamuProjectPlayerCameraManager::RotateCameraRight(float DeltaTime)
 {
     CameraRotation.Yaw += RotationSpeed * DeltaTime;
-    UE_LOG(LogTemp, Log, TEXT("CameraManager RotateRight - New Rotation: %s"), *CameraRotation.ToString());
 }
 
 void AAdamuProjectPlayerCameraManager::UpdateEdgeScrolling(float DeltaTime)
@@ -97,7 +95,6 @@ void AAdamuProjectPlayerCameraManager::UpdateEdgeScrolling(float DeltaTime)
         if (MovementDelta != FVector::ZeroVector)
         {
             CameraLocation += MovementDelta;
-            UE_LOG(LogTemp, Log, TEXT("CameraManager EdgeScroll - Delta: %s, New Location: %s"), *MovementDelta.ToString(), *CameraLocation.ToString());
         }
     }
 }

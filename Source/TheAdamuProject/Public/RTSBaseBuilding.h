@@ -5,13 +5,16 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
 #include "Components/DecalComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/BoxComponent.h"
+#include "RTSResourceInteractionInterface.h"
 #include "RTSBaseBuilding.generated.h"
 
 
 class AAdamuProjectPlayerController;
 
 UCLASS(Blueprintable)
-class THEADAMUPROJECT_API ARTSBaseBuilding : public APawn
+class THEADAMUPROJECT_API ARTSBaseBuilding : public APawn, public IRTSResourceInteractionInterface
 {
 	GENERATED_BODY()
 
@@ -46,9 +49,19 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Selection")
 	UDecalComponent* SelectionDecal_Prospect;
 
+	// Static Mesh Component for the building's visual and collision
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UStaticMeshComponent* BuildingMesh;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UBoxComponent* CollisionBox;
+
 	// Function to toggle decals based on selection state
 	UFUNCTION(BlueprintCallable, Category = "Selection")
 	void SetSelectionState(bool bIsSelected, bool bIsPlayerOwned, bool bIsProspect);
+
+	UFUNCTION(BlueprintCallable, Category = "Mining")
+	virtual bool BuildingCanReceiveGold_Implementation() override;
 
 protected:
 	// Called when the game starts or when spawned

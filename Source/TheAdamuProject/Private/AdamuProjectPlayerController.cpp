@@ -4,6 +4,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "RTSBaseUnit_Ground.h"
 #include "RTSBaseUnit_Air.h"
+#include "RTSBaseBuilding.h"
 #include "Kismet/GameplayStatics.h"
 #include "RTSHUD.h"
 #include "Net/UnrealNetwork.h"
@@ -52,6 +53,11 @@ void AAdamuProjectPlayerController::GetLifetimeReplicatedProps(TArray<FLifetimeP
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
     DOREPLIFETIME(AAdamuProjectPlayerController, ProspectiveSelectedUnits);
     DOREPLIFETIME(AAdamuProjectPlayerController, SelectedUnits);
+}
+
+AAdamuProjectPlayerState* AAdamuProjectPlayerController::GetAdamuPlayerState() const
+{
+    return Cast<AAdamuProjectPlayerState>(PlayerState);
 }
 
 void AAdamuProjectPlayerController::SetViewTargetWithBlend(AActor* NewViewTarget, float BlendTime, EViewTargetBlendFunction BlendFunc, float BlendExp, bool bLockOutgoing)
@@ -357,15 +363,52 @@ void AAdamuProjectPlayerController::OnLeftClickReleased(const FInputActionValue&
     }
 }
 
-void AAdamuProjectPlayerController::HandleRightClickOnUnit(ARTSBaseUnit* HitUnit, FVector HitLocation)
+void AAdamuProjectPlayerController::HandleRightClickOnUnit(AActor* HitActor, FVector HitLocation)
 {
-    // Scenario 1: Hit an RTSBaseUnit
-    UE_LOG(LogTemp, Log, TEXT("Right-clicked on RTSBaseUnit: %s"), *HitUnit->GetName());
+    if (!IsValid(HitActor))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("HandleRightClickOnUnit called with invalid HitActor"));
+        return;
+    }
 
-    // Future code for interacting with units (e.g., attack, follow) would go here
+    ARTSBaseUnit* HitUnit = Cast<ARTSBaseUnit>(HitActor);
+    ARTSBaseBuilding* HitBuilding = Cast<ARTSBaseBuilding>(HitActor);
 
-    // Spawn the effect at the unit's location
+    if (HitUnit)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Right-clicked on RTSBaseUnit: %s"), *HitUnit->GetName());
+    }
+    else if (HitBuilding)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Right-clicked on a building: %s"), *HitBuilding->GetName());
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("HandleRightClickOnUnit called with invalid actor (not a unit or building): %s"), *HitActor->GetName());
+        return;
+    }
+
     SpawnRightClickEffect(HitLocation);
+
+    if (SelectedUnits.Num() > 0)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Attempting to move to target: %s"), *HitActor->GetName());
+        UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+        if (NavSystem)
+        {
+            FNavLocation ProjectedLocation;
+            bool bFoundValidLocation = NavSystem->ProjectPointToNavigation(HitLocation, ProjectedLocation, FVector(200.0f, 200.0f, 100.0f));
+            FVector TargetLocation = bFoundValidLocation ? ProjectedLocation.Location : HitLocation;
+
+            for (ARTSBaseUnit* Unit : SelectedUnits)
+            {
+                if (Unit)
+                {
+                    Unit->SetMovementTarget(TargetLocation, HitActor, EResourceType::None);
+                }
+            }
+        }
+    }
 }
 
 void AAdamuProjectPlayerController::HandleRightClickOnResource(AActor* HitActor, FVector HitLocation)
@@ -437,19 +480,26 @@ void AAdamuProjectPlayerController::OnRightClick(const FInputActionValue& Value)
         {
             UE_LOG(LogTemp, Log, TEXT("Hit Location: %s"), *Hit.Location.ToString());
 
-            // Check which scenario applies and call the appropriate method
-            ARTSBaseUnit* HitUnit = Cast<ARTSBaseUnit>(Hit.GetActor());
-			// Scenario 1: Hit an RTSBaseUnit
-            if (HitUnit)
+            AActor* HitActor = Hit.GetActor();
+            if (!IsValid(HitActor))
             {
-                HandleRightClickOnUnit(HitUnit, Hit.Location);
+                UE_LOG(LogTemp, Warning, TEXT("HitActor is invalid after raycast"));
+                return;
             }
-			// Scenario 2: Hit a resource actor that implements the RTSResourceInteractionInterface
-            else if (Hit.GetActor() && Hit.GetActor()->Implements<URTSResourceInteractionInterface>())
+
+            UE_LOG(LogTemp, Log, TEXT("HitActor class: %s, Name: %s"), *HitActor->GetClass()->GetName(), *HitActor->GetName());
+
+            ARTSBaseUnit* HitUnit = Cast<ARTSBaseUnit>(HitActor);
+            ARTSBaseBuilding* HitBuilding = Cast<ARTSBaseBuilding>(HitActor);
+
+            if (HitUnit || HitBuilding)
             {
-                HandleRightClickOnResource(Hit.GetActor(), Hit.Location);
+                HandleRightClickOnUnit(HitActor, Hit.Location);
             }
-			// Scenario 3: Hit terrain/empty space
+            else if (HitActor && HitActor->Implements<URTSResourceInteractionInterface>())
+            {
+                HandleRightClickOnResource(HitActor, Hit.Location);
+            }
             else
             {
                 HandleRightClickOnEmptySpace(Hit.Location);

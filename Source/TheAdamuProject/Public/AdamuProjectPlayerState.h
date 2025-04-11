@@ -6,6 +6,14 @@
 #include "GameFramework/PlayerState.h"
 #include "AdamuProjectPlayerState.generated.h"
 
+UENUM(BlueprintType)
+enum class EPlayerState : uint8
+{
+	Active      UMETA(DisplayName = "Active"),
+	Defeated    UMETA(DisplayName = "Defeated"),
+	Spectating  UMETA(DisplayName = "Spectating")
+};
+
 /**
  * 
  */
@@ -17,9 +25,11 @@ class THEADAMUPROJECT_API AAdamuProjectPlayerState : public APlayerState
 public:
 	AAdamuProjectPlayerState();
 
-	// Team number for this player
-	UPROPERTY(Replicated, BlueprintReadWrite, Category = "Ownership")
-	int32 TeamNumber = 0;
+	UPROPERTY(Replicated, BlueprintReadWrite, Category = "Player")
+	EPlayerState CurrentState;
+
+	UPROPERTY(Replicated, BlueprintReadWrite, Category = "Player")
+	int32 TeamNumber;
 
 	// Override to ensure replication works
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

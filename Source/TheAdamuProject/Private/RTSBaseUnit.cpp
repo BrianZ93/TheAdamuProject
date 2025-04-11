@@ -4,28 +4,37 @@
 #include "RTSBaseUnit.h"
 #include "Net/UnrealNetwork.h"
 #include "GameFramework/CharacterMovementComponent.h"
-#include "AIController.h"
+#include "Components/CapsuleComponent.h"
 
 // Sets default values
 ARTSBaseUnit::ARTSBaseUnit()
 {
-	// Ensure actor can replicate
 	SetReplicates(true);
-	AutoPossessPlayer = EAutoReceiveInput::Disabled;
-	AutoPossessAI = EAutoPossessAI::Disabled;
-
- 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 	bIsMoving = false;
 	MovementTarget = FVector::ZeroVector;
-
-	// Initialize new properties
 	bIsMining = false;
 	CurrentGoldResource = nullptr;
+
+	// Set CapsuleComponent as root
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	GetCapsuleComponent()->SetCollisionObjectType(ECC_Pawn);
+	GetCapsuleComponent()->SetCollisionResponseToAllChannels(ECR_Block);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Ignore);
+	GetCapsuleComponent()->SetCapsuleSize(35.f, 90.f); // Adjust size as needed
+
+	// Attach the SkeletalMesh to the BoxComponent
+	GetMesh()->SetupAttachment(GetCapsuleComponent());
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision); // Mesh is visual-only
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 
-	// Disable auto-possession by any Player Controller
-	AutoPossessPlayer = EAutoReceiveInput::Disabled;
+	// Configure CharacterMovementComponent (default setup for ground units)
+	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->RotationRate = FRotator(0.f, 540.f, 0.f);
+	GetCharacterMovement()->MaxWalkSpeed = CustomMoveSpeed;
+	GetCharacterMovement()->bUseRVOAvoidance = true;
+	GetCharacterMovement()->AvoidanceConsiderationRadius = 100.f;
+	GetCharacterMovement()->AvoidanceWeight = 0.5f;
 
 	// Create and attach the Enemy decal component
 	SelectionDecal_Enemy = CreateDefaultSubobject<UDecalComponent>(TEXT("SelectionDecal_Enemy"));
@@ -41,12 +50,6 @@ ARTSBaseUnit::ARTSBaseUnit()
 	SelectionDecal_Prospect = CreateDefaultSubobject<UDecalComponent>(TEXT("SelectionDecal_Prospect"));
 	SelectionDecal_Prospect->SetupAttachment(RootComponent);
 	SelectionDecal_Prospect->SetVisibility(false); // Hidden by default
-
-	// Configure CharacterMovementComponent (default setup for ground units)
-	GetCharacterMovement()->bOrientRotationToMovement = true; // Rotate toward movement direction
-	GetCharacterMovement()->RotationRate = FRotator(0.f, 540.f, 0.f); // Fast rotation
-	GetCharacterMovement()->MaxWalkSpeed = CustomMoveSpeed; // Use custom speed
-	GetCharacterMovement()->bUseRVOAvoidance = true; // Enable basic unit avoidance
 }
 
 void ARTSBaseUnit::BeginPlay()

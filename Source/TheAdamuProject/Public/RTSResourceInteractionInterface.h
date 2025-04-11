@@ -35,4 +35,7 @@ public:
     // Find nearest gold deposit
     UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Resource")
     void FindNearestGoldDepositLocation();
+
+    UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category = "Resource")
+    bool BuildingCanReceiveGold();
 };

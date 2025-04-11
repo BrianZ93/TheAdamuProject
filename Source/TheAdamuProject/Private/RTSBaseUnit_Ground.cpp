@@ -2,133 +2,138 @@
 
 
 #include "RTSBaseUnit_Ground.h"
-#include "AIController.h"
+#include "RTSBaseBuilding.h"
 #include "NavigationSystem.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "RTSResourceInteractionInterface.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Kismet/GameplayStatics.h"
+#include "DrawDebugHelpers.h"
+#include "RTS_AIController.h"
+#include "Components/CapsuleComponent.h"
 
 ARTSBaseUnit_Ground::ARTSBaseUnit_Ground()
 {
-    // Create and attach an AIController
-    OwningPlayerId = 0;
+    AIControllerClass = ARTS_AIController::StaticClass();
+    AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
     // Ground-specific initialization
-    GetCharacterMovement()->MaxWalkSpeed = CustomMoveSpeed; // Ensure speed is set
-    GetCharacterMovement()->bUseControllerDesiredRotation = false; // We'll handle direction
+    OwningPlayerId = 0;
+    GetCharacterMovement()->MaxWalkSpeed = CustomMoveSpeed;
+    GetCharacterMovement()->bUseControllerDesiredRotation = false;
 
-    // Create an AIController for pathfinding
-    AIController = nullptr;
     bIsPathfinding = false;
     bIsMoving = false;
-
-    // Spawn an AIController and possess this character
-    AIController = GetWorld() ? GetWorld()->SpawnActor<AAIController>(AAIController::StaticClass()) : nullptr;
-    if (AIController)
-    {
-        AIController->Possess(this);
-    }
+    bIsMining = false;
 }
 
 void ARTSBaseUnit_Ground::BeginPlay()
 {
     Super::BeginPlay();
-    if (!AIController)
+
+    // Manually possess if no controller is found
+    if (!GetController())
     {
-        AIController = GetWorld()->SpawnActor<AAIController>(AAIController::StaticClass());
-        if (AIController)
+        ARTS_AIController* NewController = GetWorld()->SpawnActor<ARTS_AIController>(ARTS_AIController::StaticClass());
+        if (NewController)
         {
-            AIController->Possess(this);
+            NewController->Possess(this);
+            AIController = NewController;
+            UE_LOG(LogTemp, Log, TEXT("Manually possessed unit %s with RTS_AIController"), *GetName());
         }
     }
+    else
+    {
+        AIController = Cast<ARTS_AIController>(GetController());
+        if (AIController)
+        {
+            UE_LOG(LogTemp, Log, TEXT("RTS_AIController successfully attached to unit %s"), *GetName());
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("RTS_AIController not found for unit %s. Controller is: %s"),
+                *GetName(), GetController() ? *GetController()->GetClass()->GetName() : TEXT("Null"));
+        }
+    }
+
+    UCharacterMovementComponent* MovementComponent = GetCharacterMovement();
+    if (MovementComponent)
+    {
+        MovementComponent->bUseRVOAvoidance = true;
+        MovementComponent->AvoidanceConsiderationRadius = 200.0f; // Increased for maze navigation
+        MovementComponent->AvoidanceWeight = 0.8f; // Stronger avoidance
+        MovementComponent->SetAvoidanceGroup(1);
+        MovementComponent->SetGroupsToAvoid(1);
+        MovementComponent->SetGroupsToIgnore(0);
+        MovementComponent->bOrientRotationToMovement = true; // Align with movement direction
+        MovementComponent->RotationRate = FRotator(0.0f, 540.0f, 0.0f); // Fast rotation for responsiveness
+    }
+
 }
 
 void ARTSBaseUnit_Ground::SetMovementTarget(FVector NewTarget, AActor* TargetActor, EResourceType ResourceType)
 {
     MovementTarget = NewTarget;
     bIsMoving = true;
-    bIsPathfinding = true;
     bIsMining = false;
+    bIsPathfinding = true;
 
-    // Set resource based on type
     if (ResourceType == EResourceType::Gold)
     {
         CurrentGoldResource = TargetActor;
+        CurrentResourceType = ResourceType;
     }
     else
     {
-        CurrentGoldResource = nullptr; // Clear if not gold (add other resource types later)
+        CurrentGoldResource = nullptr;
+		CurrentResourceType = EResourceType::None;
     }
 
-
-    UE_LOG(LogTemp, Log, TEXT("Ground Unit %s moving to: %s (Target Actor: %s)"),
-        *GetName(), *MovementTarget.ToString(), TargetActor ? *TargetActor->GetName() : TEXT("None"));
-
-    // Use the navigation system to move to the target
     if (AIController)
     {
-        UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
-        if (NavSystem)
-        {
-            AIController->MoveToLocation(MovementTarget, 50.0f);  // Acceptance radius
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("Navigation system not found for unit %s"), *GetName());
-            bIsMoving = false;
-            bIsPathfinding = false;
-        }
-    }
-    else
-    {
-        UE_LOG(LogTemp, Warning, TEXT("AIController not found for unit %s"), *GetName());
-        bIsMoving = false;
-        bIsPathfinding = false;
-    }
+        AIController->MoveToTargetLocation(MovementTarget, 50.0f);
+        UE_LOG(LogTemp, Log, TEXT("Unit %s set movement target to %s"), *GetName(), *MovementTarget.ToString());
 
+        // Debug: Draw the target location
+        DrawDebugSphere(GetWorld(), MovementTarget, 50.0f, 12, FColor::Red, false, 2.0f);
+    }
 }
 
 void ARTSBaseUnit_Ground::UpdateMovement(float DeltaTime)
 {
-    if (!bIsPathfinding)
+    if (!AIController || !bIsMoving)
     {
-        return; // Already handled by AIController
+        return;
     }
 
-    // Check if we've reached the target
-    if (AIController)
+    // Periodically recalculate path to handle dynamic obstacles
+    static float PathRecalcTimer = 0.f;
+    PathRecalcTimer += DeltaTime;
+    if (PathRecalcTimer >= 1.0f) // Recalculate every second
     {
-        EPathFollowingStatus::Type PathStatus = AIController->GetPathFollowingComponent()->GetStatus();
-        if (PathStatus == EPathFollowingStatus::Idle)
+        PathRecalcTimer = 0.f;
+        AIController->MoveToTargetLocation(MovementTarget, 50.f);
+        UE_LOG(LogTemp, Log, TEXT("Unit %s recalculating path to target"), *GetName());
+    }
+
+    float DistanceToTarget = FVector::Dist(GetActorLocation(), MovementTarget);
+    if (DistanceToTarget <= 150.f) // Acceptance radius
+    {
+        AIController->StopUnitMovement();
+        bIsMoving = false; // Ensure movement stops
+
+        // Check if targeting a gold resource
+        if (CurrentGoldResource && CurrentGoldResource->Implements<URTSResourceInteractionInterface>() &&
+            IRTSResourceInteractionInterface::Execute_IsGoldResource(CurrentGoldResource))
         {
-            // Reached target or failed to find a path
-            bIsMoving = false;
-            bIsPathfinding = false;
-            GetCharacterMovement()->StopMovementImmediately();
-            //SetActorLocation(FVector(MovementTarget.X, MovementTarget.Y, GetActorLocation().Z)); // Snap to target (keep Z)
-            UE_LOG(LogTemp, Log, TEXT("Ground Unit %s reached target: %s"), *GetName(), *MovementTarget.ToString());
-
-            // If targeting a gold resource, rotate and start mining
-            if (CurrentGoldResource && CurrentGoldResource->Implements<URTSResourceInteractionInterface>() &&
-                IRTSResourceInteractionInterface::Execute_IsGoldResource(CurrentGoldResource))
-            {
-                // Rotate toward the resource
-                FVector Direction = (CurrentGoldResource->GetActorLocation() - GetActorLocation()).GetSafeNormal();
-                FRotator TargetRotation = UKismetMathLibrary::MakeRotFromX(Direction);
-                SetActorRotation(TargetRotation);
-                StartGoldMining(CurrentGoldResource); // Notify the blueprints of the gold actor object reference
-
-                // Start mining
-                bIsMining = true;
-                UE_LOG(LogTemp, Log, TEXT("Unit %s started mining gold resource %s"), *GetName(), *CurrentGoldResource->GetName());
-            }
-			else
-			{
-				bIsMining = false; // Clear mining flag
-			}
+            FVector Direction = (CurrentGoldResource->GetActorLocation() - GetActorLocation()).GetSafeNormal();
+            FRotator TargetRotation = UKismetMathLibrary::MakeRotFromX(Direction);
+            SetActorRotation(TargetRotation);
+            StartGoldMining(CurrentGoldResource);
+            bIsMining = true;
+            UE_LOG(LogTemp, Log, TEXT("Unit %s reached gold resource and started mining %s"), *GetName(), *CurrentGoldResource->GetName());
         }
-
     }
 }
 
@@ -141,6 +146,104 @@ void ARTSBaseUnit_Ground::StartGoldMining(AActor* GoldResource)
 void ARTSBaseUnit_Ground::FindNearestGoldDepositLocation_Implementation()
 {
     UE_LOG(LogTemp, Log, TEXT("Unit %s stopped mining and is looking for a drop-off"), *GetName());
+
+    // Step 1: Get the navigation system
+    UNavigationSystemV1* NavSystem = UNavigationSystemV1::GetCurrent(GetWorld());
+    if (!NavSystem)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Navigation system not found for unit %s"), *GetName());
+        return;
+    }
+
+    // Step 2: Find all actors in the world
+    TArray<AActor*> AllActors;
+    UGameplayStatics::GetAllActorsOfClass(GetWorld(), AActor::StaticClass(), AllActors);
+
+    UE_LOG(LogTemp, Log, TEXT("Total actors found in world: %d"), AllActors.Num());
+
+    if (AllActors.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("No actors found in the world for unit %s"), *GetName());
+        return;
+    }
+
+    // Step 3: Filter actors and calculate shortest path
+    AActor* NearestDropoff = nullptr;
+    float ShortestPathLength = MAX_FLT;
+    FVector UnitLocation = GetActorLocation();
+
+    for (AActor* Actor : AllActors)
+    {
+        if (!Actor || Actor == this)
+        {
+            continue;
+        }
+
+        // Log all actors for debugging
+        UE_LOG(LogTemp, Log, TEXT("Checking actor: %s"), *Actor->GetName());
+
+        // Check if the actor implements IRTSResourceInteractionInterface
+        if (!Actor->Implements<URTSResourceInteractionInterface>())
+        {
+            UE_LOG(LogTemp, Log, TEXT("Actor %s does not implement IRTSResourceInteractionInterface"), *Actor->GetName());
+            continue;
+        }
+
+        // Check if the actor can receive gold
+        bool bCanReceiveGold = IRTSResourceInteractionInterface::Execute_BuildingCanReceiveGold(Actor);
+        if (!bCanReceiveGold)
+        {
+            UE_LOG(LogTemp, Log, TEXT("Actor %s cannot receive gold"), *Actor->GetName());
+            continue;
+        }
+
+        // Calculate the path length to this actor
+        FPathFindingQuery Query;
+        Query.StartLocation = UnitLocation;
+        Query.EndLocation = Actor->GetActorLocation();
+        Query.NavData = NavSystem->GetDefaultNavDataInstance(FNavigationSystem::DontCreate);
+        Query.Owner = this;
+
+        FPathFindingResult PathResult = NavSystem->FindPathSync(Query);
+        if (PathResult.IsSuccessful() && PathResult.Path.IsValid())
+        {
+            float PathLength = PathResult.Path->GetLength();
+            UE_LOG(LogTemp, Log, TEXT("Valid path to %s, length: %f"), *Actor->GetName(), PathLength);
+            if (PathLength < ShortestPathLength)
+            {
+                ShortestPathLength = PathLength;
+                NearestDropoff = Actor;
+            }
+        }
+        else
+        {
+            UE_LOG(LogTemp, Warning, TEXT("No valid path found to %s from unit %s"), *Actor->GetName(), *GetName());
+        }
+    }
+
+    // Step 4: Process the result
+    if (NearestDropoff)
+    {
+        UE_LOG(LogTemp, Log, TEXT("Unit %s found nearest drop-off: %s (Path Length: %f)"),
+            *GetName(), *NearestDropoff->GetName(), ShortestPathLength);
+
+        DrawDebugSphere(
+            GetWorld(),
+            NearestDropoff->GetActorLocation(),
+            100.0f,
+            12,
+            FColor::Green,
+            false,
+            5.0f
+        );
+
+        // Move to the drop-off
+        SetMovementTarget(NearestDropoff->GetActorLocation(), NearestDropoff, EResourceType::None);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("No valid drop-off location found for unit %s"), *GetName());
+    }
 }
 
 void ARTSBaseUnit_Ground::StopMiningAndDropoffGold()

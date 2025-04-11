@@ -13,5 +13,6 @@ void AAdamuProjectPlayerState::GetLifetimeReplicatedProps(TArray<FLifetimeProper
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	// Register TeamNumber for replication
+	DOREPLIFETIME(AAdamuProjectPlayerState, CurrentState);
 	DOREPLIFETIME(AAdamuProjectPlayerState, TeamNumber);
 }

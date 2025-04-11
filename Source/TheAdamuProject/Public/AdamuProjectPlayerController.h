@@ -9,6 +9,7 @@
 #include "RTSBaseUnit.h"
 #include "RTSBaseUnit_ground.h"
 #include "RTSHUD.h"
+#include "AdamuProjectPlayerState.h"
 #include "AdamuProjectPlayerController.generated.h"
 
 class ARTSBaseUnit;
@@ -50,7 +51,7 @@ protected:
     UFUNCTION()
     void OnRightClick(const FInputActionValue& Value);
 
-    void HandleRightClickOnUnit(ARTSBaseUnit* HitUnit, FVector HitLocation);
+    void HandleRightClickOnUnit(AActor* HitUnit, FVector HitLocation);
     void HandleRightClickOnResource(AActor* HitActor, FVector HitLocation);
     void HandleRightClickOnEmptySpace(FVector HitLocation);
 
@@ -126,6 +127,9 @@ protected:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD")
     TSubclassOf<class ARTSHUD> RTSHUD;
+
+    UFUNCTION(BlueprintCallable, Category = "Player")
+    AAdamuProjectPlayerState* GetAdamuPlayerState() const;
 
 private:
     bool bFirstDragFrame = true;

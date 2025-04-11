@@ -5,10 +5,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
 #include "Components/DecalComponent.h"
+#include "Components/BoxComponent.h"
 #include "Animation/AnimInstance.h"
 #include "RTSBaseUnit.generated.h"
 
-// Forward declaration instead of #include "AdamuProjectPlayerController.h" to avoid circular dependency
 class AAdamuProjectPlayerController;
 
 // Enum for resource types
@@ -56,6 +56,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadWrite, Category = "Selection")
 	UDecalComponent* SelectionDecal_Prospect;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	UBoxComponent* CollisionBox;
+
 	// Function to toggle decals based on selection state
 	UFUNCTION(BlueprintCallable, Category = "Selection")
 	void SetSelectionState(bool bIsSelected, bool bIsPlayerOwned, bool bIsProspect);
@@ -70,22 +73,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Mining")
 	virtual void StartGoldMining(AActor* GoldResource);
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
-	float CustomMoveSpeed = 500.0f;
-
 	// New Animation Blueprint property
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
 	TSubclassOf<UAnimInstance> UnitAnimationBlueprint;
 
 	UFUNCTION(BlueprintCallable, Category = "Mining")
 	AActor* GetCurrentGoldResource() const { return CurrentGoldResource; }
-
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
-
-	// Current movement target
-	FVector MovementTarget;
 
 	// Whether the unit is moving
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Animation")
@@ -94,6 +87,25 @@ protected:
 	// New properties for mining behavior
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Animation")
 	bool bIsMining;
+
+protected:
+	// Called when the game starts or when spawned
+	virtual void BeginPlay() override;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
+	float CustomMoveSpeed = 500.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	FVector MovementTarget;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement")
+	bool bIsPathfinding;
+
+	UPROPERTY()
+	AActor* CurrentTargetActor;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
+	class ARTS_AIController* AIController;
 
 	// Current target actor (e.g., BP_Gold), restored as a UPROPERTY
 	UPROPERTY(Transient, BlueprintReadOnly, Category = "Animation")
